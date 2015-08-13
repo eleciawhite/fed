@@ -21,33 +21,17 @@ SdFat SD;
 SoftwareSerial LEDserial = SoftwareSerial(rxPin, txPin);
 
 
-///
-// any pins can be used
-//#define SCK 13
-//#define MOSI 11
-//#define SS 4
-
-//Adafruit_SharpMem display(SCK, MOSI, SS);
-
-//#define BLACK 0
-//#define WHITE 1
-
-///
-
-//int pokeCount = 0;
-
 long previousMillis = 0;
 long startTime = 0;
 long timeElapsed = 0;
-long day2 = 86400000; // 86400000 milliseconds in a day
-long hour2 = 3600000; // 3600000 milliseconds in an hour
-long minute2 = 60000; // 60000 milliseconds in a minute
-long second2 =  1000; // 1000 milliseconds in a second
+const long day2 = 86400000; // 86400000 milliseconds in a day
+const long hour2 = 3600000; // 3600000 milliseconds in an hour
+const long minute2 = 60000; // 60000 milliseconds in a minute
+const long second2 =  1000; // 1000 milliseconds in a second
 
 const int CS_pin = 10;
 RTC_DS1307 RTC;    // refer to the real-time clock on the SD shield
-String year, month, day, hour, minute, second, date, time;
-String time2, time3;
+String time;
 File dataFile;
 
 const int MOTOR_INPUT1_PIN = 7 ;
@@ -70,6 +54,7 @@ int pelletCount = 0;
 Stepper motor(MOTOR_STEPS_PER_REVOLUTION, MOTOR_INPUT1_PIN, MOTOR_INPUT2_PIN, MOTOR_INPUT3_PIN, MOTOR_INPUT4_PIN);
 
 int logData() {
+  String year, month, day, hour, minute, second;
   DateTime datetime = RTC.now();
   year = String(datetime.year(), DEC);
   month = String(datetime.month(), DEC);
@@ -88,7 +73,7 @@ int logData() {
 
   dataFile = SD.open("PELLETJuly.csv", FILE_WRITE);
   if (dataFile) {
-    Serial.println("File successfully written...");
+    Serial.println(F("File successfully written..."));
     Serial.println(time);
     dataFile.print(time);
     dataFile.print(",");
@@ -120,7 +105,7 @@ void setMotorToSleep() {
 void setup()
 {
   Serial.begin(9600);
-  Serial.println("Starting up...");
+  Serial.println(F("Starting up..."));
 
   LEDserial.begin(9600); //Talk to the Serial7Segment at 9600 bps
 
@@ -152,7 +137,7 @@ void setup()
   RTC.begin();
 
   if (! RTC.isrunning()) {
-    Serial.println("RTC is NOT running!");
+    Serial.println(F("RTC is NOT running!"));
     // following line sets the RTC to the date & time this sketch was compiled
     RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
     // This line sets the RTC with an explicit date & time, for example to set
@@ -161,23 +146,23 @@ void setup()
   }
 
   if (!SD.begin(CS_pin)) {
-    Serial.println("Card failed, or not present");
+    Serial.println(F("Card failed, or not present"));
     // don't do anything more:
     while (1) ;
   }
 
-  Serial.println("card initialized.");
+  Serial.println(F("Card initialized."));
 
   dataFile = SD.open("PELLETJuly.csv", FILE_WRITE);
   if (! dataFile) {
-    Serial.println("error opening datalog.txt");
+    Serial.println(F("Error opening datalog.txt"));
     // Wait forever since we cant write data
     while (1) ;
   }
 
   else {
     dataFile.print(time);
-    dataFile.println("Time,Pellet Count,Pellet Drop Delay");
+    dataFile.println(F("Time,Pellet Count,Pellet Drop Delay"));
     dataFile.close();
   }
 
@@ -205,30 +190,27 @@ void loop()
     digitalWrite(MOTOR_INPUT3_PIN, HIGH);
     digitalWrite(MOTOR_INPUT4_PIN, HIGH);
     startTime = millis();
-    Serial.print("Time Elapsed Check: ");
+    Serial.print(F("Time Elapsed Check: "));
     Serial.println(timeElapsed);
     timecounter(timeElapsed);
     logData();
     pelletCount ++;
-    Serial.println("It did work");
+    Serial.println(F("It did work"));
     LEDserial.print("v"); // this is the reset display command
     delay(5); // allow a very short delay for display response
     LEDserial.print(pelletCount);
-    //    Serial.println("It did work again");
     lastState = PIState;
 
   }
   else if (PIState == 1) {
-    //Serial.print("Beam Broken: ");
-    //Serial.println("No");
-    Serial.println("Turning motor...");
+    Serial.println(F("Turning motor..."));
     motor.step(-steps / 2);
     motor.step(steps);
     lastState = PIState;
   }
   
   else if (PIState == 0 & PIState != lastState) {
-    Serial.print("Time Elapsed Since Last Pellet: ");
+    Serial.print(F("Time Elapsed Since Last Pellet: "));
     timeElapsed = millis() - startTime;
     Serial.println(timeElapsed);
     lastState = PIState;
@@ -236,8 +218,6 @@ void loop()
   }
     
   else  {
-    //Serial.print("Beam Broken: ");
-    //Serial.println("Yes");
     lastState = PIState;
     digitalWrite(MOTOR_INPUT1_PIN, LOW);
     digitalWrite(MOTOR_INPUT2_PIN, LOW);
@@ -245,7 +225,6 @@ void loop()
     digitalWrite(MOTOR_INPUT4_PIN, LOW);
     setMotorToSleep();
     enterSleep();
-
   }
 
 
@@ -269,19 +248,11 @@ void timecounter(long timeNow) {
   int mil = ((((timeNow % day2) % hour2) % minute2) % second2);
 
   // digital clock display of current time
-  //Serial.print(days,DEC);
-  //time2 = '';
-  //time3 = 'Time';
   printDigits(hours); Serial.print(":");
-  //time3 += time2; time3 += ":";
   printDigits(minutes); Serial.print(":");
-  //time3 += time2; time3 += ":";
   printDigits(seconds); Serial.print(":");
-  //time3 += time2; time3 += ":";
   printDigits(mil);
-  //time3 += time2;
   Serial.println();
-  Serial.println(time3);
 
 }
 
