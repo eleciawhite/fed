@@ -50,13 +50,15 @@ String year, month, day, hour, minute, second, date, time;
 String time2, time3;
 File dataFile;
 
-int in1Pin = 7 ;
-int in2Pin = 6;
-int in3Pin = 5;
-int in4Pin = 4;
-int steps = 64;//512;
-
-int TTL = 3;
+const int MOTOR_INPUT1_PIN = 7 ;
+const int MOTOR_INPUT2_PIN = 6;
+const int MOTOR_INPUT3_PIN = 5;
+const int MOTOR_INPUT4_PIN = 4;
+const int steps = 64;
+const int MOTOR_STEPS_PER_REVOLUTION = 512;
+const int MOTOR_ENABLE12_PIN = 8;
+const int MOTOR_ENABLE34_PIN = 9;
+const int TTL = 3;
 
 
 int PIState = 1;
@@ -65,7 +67,7 @@ int PIPin = 2;
 
 int pelletCount = 0;
 
-Stepper motor(512, in1Pin, in2Pin, in3Pin, in4Pin);
+Stepper motor(MOTOR_STEPS_PER_REVOLUTION, MOTOR_INPUT1_PIN, MOTOR_INPUT2_PIN, MOTOR_INPUT3_PIN, MOTOR_INPUT4_PIN);
 
 int logData() {
   DateTime datetime = RTC.now();
@@ -97,7 +99,23 @@ int logData() {
   }
 }
 
+void setMotorToTurn() {
+    digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
+    digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
+    pinMode(MOTOR_INPUT1_PIN, OUTPUT);
+    pinMode(MOTOR_INPUT2_PIN, OUTPUT);
+    pinMode(MOTOR_INPUT3_PIN, OUTPUT);
+    pinMode(MOTOR_INPUT4_PIN, OUTPUT);
+}
 
+void setMotorToSleep() {
+    pinMode(MOTOR_INPUT1_PIN, INPUT);
+    pinMode(MOTOR_INPUT2_PIN, INPUT);
+    pinMode(MOTOR_INPUT3_PIN, INPUT);
+    pinMode(MOTOR_INPUT4_PIN, INPUT);
+    digitalWrite(MOTOR_ENABLE12_PIN, LOW);
+    digitalWrite(MOTOR_ENABLE34_PIN, LOW);  
+}
 
 void setup()
 {
@@ -111,11 +129,15 @@ void setup()
   PORTD |= B11111100;      // enable pullups on pins 2 to 7M
   PORTB |= B11111111;      // enable pullups on pins 8 to 13
 
+  pinMode(MOTOR_ENABLE12_PIN, OUTPUT);
+  pinMode(MOTOR_ENABLE34_PIN, OUTPUT);
+  digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
+  digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
 
-  pinMode(in1Pin, OUTPUT);
-  pinMode(in2Pin, OUTPUT);
-  pinMode(in3Pin, OUTPUT);
-  pinMode(in4Pin, OUTPUT);
+  pinMode(MOTOR_INPUT1_PIN, OUTPUT);
+  pinMode(MOTOR_INPUT2_PIN, OUTPUT);
+  pinMode(MOTOR_INPUT3_PIN, OUTPUT);
+  pinMode(MOTOR_INPUT4_PIN, OUTPUT);
   pinMode(PIPin, INPUT);
   pinMode(TTL, OUTPUT);
   pinMode(CS_pin, OUTPUT);
@@ -174,12 +196,14 @@ void loop()
   digitalWrite(TTL, LOW);
 
   if (PIState == 1  & PIState != lastState) {
+    setMotorToTurn();
+  
     digitalWrite(TTL, HIGH);
     delay(50);
-    digitalWrite(in1Pin, HIGH);
-    digitalWrite(in2Pin, HIGH);
-    digitalWrite(in3Pin, HIGH);
-    digitalWrite(in4Pin, HIGH);
+    digitalWrite(MOTOR_INPUT1_PIN, HIGH);
+    digitalWrite(MOTOR_INPUT2_PIN, HIGH);
+    digitalWrite(MOTOR_INPUT3_PIN, HIGH);
+    digitalWrite(MOTOR_INPUT4_PIN, HIGH);
     startTime = millis();
     Serial.print("Time Elapsed Check: ");
     Serial.println(timeElapsed);
@@ -215,10 +239,11 @@ void loop()
     //Serial.print("Beam Broken: ");
     //Serial.println("Yes");
     lastState = PIState;
-    digitalWrite(in1Pin, LOW);
-    digitalWrite(in2Pin, LOW);
-    digitalWrite(in3Pin, LOW);
-    digitalWrite(in4Pin, LOW);
+    digitalWrite(MOTOR_INPUT1_PIN, LOW);
+    digitalWrite(MOTOR_INPUT2_PIN, LOW);
+    digitalWrite(MOTOR_INPUT3_PIN, LOW);
+    digitalWrite(MOTOR_INPUT4_PIN, LOW);
+    setMotorToSleep();
     enterSleep();
 
   }
