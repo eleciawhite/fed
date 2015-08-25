@@ -2,7 +2,6 @@
 #include <avr/power.h>
 #include <avr/wdt.h>
 #include <SdFat.h>                // SD and RTC libraries
-SdFat SD;
 #include "RTClib.h"
 #include <Wire.h>
 #include <Stepper.h>
@@ -14,11 +13,12 @@ SdFat SD;
 #include <SoftwareSerial.h>
 
 
-#define rxPin 255 // 255 because we don't need a receive pin
+#define DISPLAY_SERIAL_RX_PIN 255 // we don't need a receive pin, 255 indicates this
 // Connect the Arduino pin 3 to the rx pin on the 7 segment display
-#define txPin 9
+#define DISPLAY_SERIAL_TX_PIN 9
 
-SoftwareSerial LEDserial = SoftwareSerial(rxPin, txPin);
+SoftwareSerial LEDserial = SoftwareSerial(DISPLAY_SERIAL_RX_PIN, DISPLAY_SERIAL_TX_PIN);
+SdFat SD;
 
 
 long previousMillis = 0;
@@ -41,7 +41,7 @@ const int MOTOR_INPUT4_PIN = 4;
 const int steps = 64;
 const int MOTOR_STEPS_PER_REVOLUTION = 512;
 const int MOTOR_ENABLE12_PIN = 8;
-const int MOTOR_ENABLE34_PIN = 9;
+const int MOTOR_ENABLE34_PIN = 11;
 const int TTL = 3;
 
 
@@ -85,56 +85,55 @@ int logData() {
 }
 
 void setMotorToTurn() {
-    digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
-    digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
     pinMode(MOTOR_INPUT1_PIN, OUTPUT);
     pinMode(MOTOR_INPUT2_PIN, OUTPUT);
     pinMode(MOTOR_INPUT3_PIN, OUTPUT);
     pinMode(MOTOR_INPUT4_PIN, OUTPUT);
+
+    pinMode(MOTOR_ENABLE12_PIN, OUTPUT);
+    pinMode(MOTOR_ENABLE34_PIN, OUTPUT);
+    digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
+    digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
 }
 
-void setMotorToSleep() {
-    pinMode(MOTOR_INPUT1_PIN, INPUT);
-    pinMode(MOTOR_INPUT2_PIN, INPUT);
-    pinMode(MOTOR_INPUT3_PIN, INPUT);
-    pinMode(MOTOR_INPUT4_PIN, INPUT);
+void setMotorToSleep() 
+{
     digitalWrite(MOTOR_ENABLE12_PIN, LOW);
     digitalWrite(MOTOR_ENABLE34_PIN, LOW);  
+
+    pinMode(MOTOR_INPUT1_PIN, INPUT_PULLUP);
+    pinMode(MOTOR_INPUT2_PIN, INPUT_PULLUP);
+    pinMode(MOTOR_INPUT3_PIN, INPUT_PULLUP);
+    pinMode(MOTOR_INPUT4_PIN, INPUT_PULLUP);
 }
 
 void setup()
 {
+  // make all unused pins inputs with pullups enabled by default, lowest power drain
+  // leave pins 0 & 1 (Arduino RX and TX) as they are
+  for (byte i=2; i <= 20; i++) {    
+    pinMode(i, INPUT_PULLUP);     
+  }
+  ADCSRA = 0;  // disable ADC as we won't be using it
+
   Serial.begin(9600);
   Serial.println(F("Starting up..."));
 
-  LEDserial.begin(9600); //Talk to the Serial7Segment at 9600 bps
-
-  DDRD &= B00000011;       // set Arduino pins 2 to 7 as inputs, leaves 0 & 1 (RX & TX) as is
-  DDRB = B00000000;        // set pins 8 to 13 as inputs
-  PORTD |= B11111100;      // enable pullups on pins 2 to 7M
-  PORTB |= B11111111;      // enable pullups on pins 8 to 13
-
-  pinMode(MOTOR_ENABLE12_PIN, OUTPUT);
-  pinMode(MOTOR_ENABLE34_PIN, OUTPUT);
-  digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
-  digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
-
-  pinMode(MOTOR_INPUT1_PIN, OUTPUT);
-  pinMode(MOTOR_INPUT2_PIN, OUTPUT);
-  pinMode(MOTOR_INPUT3_PIN, OUTPUT);
-  pinMode(MOTOR_INPUT4_PIN, OUTPUT);
+  // Display setup
+  LEDserial.begin(9600); 
+  pinMode(DISPLAY_SERIAL_TX_PIN, OUTPUT);
+  setDisplayBrightness(64);
+  clearDisplay();
+  delay(1); // allow a very short delay for display response
+  setDisplayValues(pelletCount);
+  
   pinMode(PIPin, INPUT);
   pinMode(TTL, OUTPUT);
   pinMode(CS_pin, OUTPUT);
   pinMode(SS, OUTPUT);
-  pinMode(9, OUTPUT);
 
-#ifdef AVR
   Wire.begin();
-#else
-  Wire1.begin(); // Shield I2C pins connect to alt I2C bus on Arduino Due
-#endif
-  RTC.begin();
+  RTC.begin(); // RTC library needs Wire
 
   if (! RTC.isrunning()) {
     Serial.println(F("RTC is NOT running!"));
@@ -167,9 +166,6 @@ void setup()
   }
 
   motor.setSpeed(35);
-
-
-
   delay (500);
 }
 
@@ -196,9 +192,9 @@ void loop()
     logData();
     pelletCount ++;
     Serial.println(F("It did work"));
-    LEDserial.print("v"); // this is the reset display command
-    delay(5); // allow a very short delay for display response
-    LEDserial.print(pelletCount);
+    clearDisplay();
+    delay(1); // allow a very short delay for display response
+    setDisplayValues(pelletCount);
     lastState = PIState;
 
   }
@@ -226,17 +222,10 @@ void loop()
     setMotorToSleep();
     enterSleep();
   }
-
-
-
-  delay(1000);
-
-  //  display.refresh();
-  //  updateCount();
-  //  pokeCount ++;
-  //  delay(1000);
-
+  
+  delay(100);
 }
+
 
 void timecounter(long timeNow) {
 
@@ -256,13 +245,12 @@ void timecounter(long timeNow) {
 
 }
 
+// utility function for digital clock display: prints colon and leading 0
 void printDigits(byte digits) {
-  // utility function for digital clock display: prints colon and leading 0
-  //Serial.print(":");
-  if (digits < 10)
+  if (digits < 10) {
     Serial.print('0');
+  }
   Serial.print(digits, DEC);
-  //time2 = String(digits);
 }
 
 void enterSleep()
@@ -278,8 +266,6 @@ void enterSleep()
   sleep_bod_disable();
   sei();
   sleep_cpu();
-
-
   sleep_disable();
 }
 
@@ -294,4 +280,27 @@ void pinInterrupt(void)
   power_all_enable();
 
 }
+
+// Send the clear display command (0x76)
+//  This will clear the display and reset the cursor
+void clearDisplay()
+{
+  LEDserial.write(0x76);  // Clear display command
+}
+
+// Set the displays brightness. Should receive byte with the value
+//  to set the brightness to
+//  dimmest------------->brightest
+//     0--------127--------255
+void setDisplayBrightness(byte value)
+{
+  LEDserial.write(0x7A);  // Set brightness command byte
+  LEDserial.write(value);  // brightness data byte
+}
+
+void setDisplayValues(int value)
+{
+  LEDserial.print(value);
+}
+
 
