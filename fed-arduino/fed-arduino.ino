@@ -40,8 +40,8 @@ const int MOTOR_INPUT3_PIN = 5;
 const int MOTOR_INPUT4_PIN = 4;
 const int steps = 64;
 const int MOTOR_STEPS_PER_REVOLUTION = 512;
-const int MOTOR_ENABLE12_PIN = 8;
-const int MOTOR_ENABLE34_PIN = 11;
+const int MOTOR_ENABLE34_PIN = 8;
+const int MOTOR_ENABLE12_PIN = 0;
 const int TTL = 3;
 
 
@@ -311,5 +311,6 @@ void setDisplayValues(int value)
 {
   LEDserial.print(value);
 }
+
 
 
