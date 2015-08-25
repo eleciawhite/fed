@@ -55,6 +55,9 @@ Stepper motor(MOTOR_STEPS_PER_REVOLUTION, MOTOR_INPUT1_PIN, MOTOR_INPUT2_PIN, MO
 
 int logData() {
   String year, month, day, hour, minute, second;
+  power_twi_enable();
+  power_spi_enable();
+
   DateTime datetime = RTC.now();
   year = String(datetime.year(), DEC);
   month = String(datetime.month(), DEC);
@@ -82,6 +85,8 @@ int logData() {
     dataFile.println(timeElapsed);
     dataFile.close();
   }
+  power_twi_disable();
+  power_spi_disable();
 }
 
 void setMotorToTurn() {
@@ -115,6 +120,9 @@ void setup()
     pinMode(i, INPUT_PULLUP);     
   }
   ADCSRA = 0;  // disable ADC as we won't be using it
+  power_adc_disable(); // ADC converter
+  power_timer1_disable();// Timer 1
+  power_timer2_disable();// Timer 2
 
   Serial.begin(9600);
   Serial.println(F("Starting up..."));
@@ -255,6 +263,8 @@ void printDigits(byte digits) {
 
 void enterSleep()
 {
+  power_usart0_disable();// Serial (USART) 
+
   sleep_enable();
 
   attachInterrupt(0, pinInterrupt, RISING);
@@ -276,9 +286,8 @@ void pinInterrupt(void)
   /* The program will continue from here after the WDT timeout*/
   sleep_disable(); /* First thing to do is disable sleep. */
 
-  /* Re-enable the peripherals. */
-  power_all_enable();
-
+  /* Re-enable the serial. */
+  power_usart0_enable();
 }
 
 // Send the clear display command (0x76)
