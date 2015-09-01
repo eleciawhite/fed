@@ -12,6 +12,7 @@
 #include <avr/io.h>
 #include <SoftwareSerial.h>
 
+#define FILENAME "PELLET_Cage12.csv"
 
 #define DISPLAY_SERIAL_RX_PIN 255 // we don't need a receive pin, 255 indicates this
 // Connect the Arduino pin 3 to the rx pin on the 7 segment display
@@ -19,7 +20,6 @@
 
 SoftwareSerial LEDserial = SoftwareSerial(DISPLAY_SERIAL_RX_PIN, DISPLAY_SERIAL_TX_PIN);
 SdFat SD;
-
 
 long previousMillis = 0;
 long startTime = 0;
@@ -74,7 +74,7 @@ int logData() {
   // the number of sucrose deliveries, the number of active and
   // inactive pokes, and the number of drinking well entries.
 
-  dataFile = SD.open("PELLETJuly.csv", FILE_WRITE);
+  dataFile = SD.open(FILENAME, FILE_WRITE);
   if (dataFile) {
     Serial.println(F("File successfully written..."));
     Serial.println(time);
@@ -174,7 +174,14 @@ void setup()
   }
 
   motor.setSpeed(35);
+  setMotorToTurn();
+
   delay (500);
+  
+  // get ready for what the system should be doing
+  PIState = digitalRead(PIPin);
+  lastState = 0;
+  
 }
 
 void loop()
