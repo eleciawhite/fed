@@ -1,22 +1,27 @@
+
 #include <avr/sleep.h>
 #include <avr/power.h>
 #include <avr/wdt.h>
 #include <SdFat.h>                // SD and RTC libraries
 #include "RTClib.h"
 #include <Wire.h>
-#include <Stepper.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SharpMem.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <SoftwareSerial.h>
+#include <Adafruit_MotorShield.h>
+#include "utility/Adafruit_PWMServoDriver.h"
 
 #define FILENAME "PELLET_Cage12.csv"
 
 #define DISPLAY_SERIAL_RX_PIN 255 // we don't need a receive pin, 255 indicates this
 // Connect the Arduino pin 3 to the rx pin on the 7 segment display
 #define DISPLAY_SERIAL_TX_PIN 9
+
+// Photo interrupter is also the wakeup for the system
+#define PHOTO_INTERRUPTER_PIN 2
 
 SoftwareSerial LEDserial = SoftwareSerial(DISPLAY_SERIAL_RX_PIN, DISPLAY_SERIAL_TX_PIN);
 SdFat SD;
@@ -34,24 +39,19 @@ RTC_DS1307 RTC;    // refer to the real-time clock on the SD shield
 String time;
 File dataFile;
 
-const int MOTOR_INPUT1_PIN = 7 ;
-const int MOTOR_INPUT2_PIN = 6;
-const int MOTOR_INPUT3_PIN = 5;
-const int MOTOR_INPUT4_PIN = 4;
-const int steps = 64;
-const int MOTOR_STEPS_PER_REVOLUTION = 512;
-const int MOTOR_ENABLE34_PIN = 8;
-const int MOTOR_ENABLE12_PIN = 0;
-const int TTL = 3;
+const int TTL_DEBUG_PIN = 3;
 
+const int STEPS_TO_INCREMENT = 64;
+const int MOTOR_STEPS_PER_REVOLUTION = 513;
 
 int PIState = 1;
 int lastState = 1;
-int PIPin = 2;
 
 int pelletCount = 0;
 
-Stepper motor(MOTOR_STEPS_PER_REVOLUTION, MOTOR_INPUT1_PIN, MOTOR_INPUT2_PIN, MOTOR_INPUT3_PIN, MOTOR_INPUT4_PIN);
+// Stepper motor with shield test
+Adafruit_MotorShield gMotorShield = Adafruit_MotorShield();
+Adafruit_StepperMotor *gPtrToStepper = gMotorShield.getStepper(MOTOR_STEPS_PER_REVOLUTION,2);
 
 int logData() {
   String year, month, day, hour, minute, second;
@@ -89,31 +89,9 @@ int logData() {
   power_spi_disable();
 }
 
-void setMotorToTurn() {
-    pinMode(MOTOR_INPUT1_PIN, OUTPUT);
-    pinMode(MOTOR_INPUT2_PIN, OUTPUT);
-    pinMode(MOTOR_INPUT3_PIN, OUTPUT);
-    pinMode(MOTOR_INPUT4_PIN, OUTPUT);
-
-    pinMode(MOTOR_ENABLE12_PIN, OUTPUT);
-    pinMode(MOTOR_ENABLE34_PIN, OUTPUT);
-    digitalWrite(MOTOR_ENABLE12_PIN, HIGH);
-    digitalWrite(MOTOR_ENABLE34_PIN, HIGH);
-}
-
-void setMotorToSleep() 
-{
-    digitalWrite(MOTOR_ENABLE12_PIN, LOW);
-    digitalWrite(MOTOR_ENABLE34_PIN, LOW);  
-
-    pinMode(MOTOR_INPUT1_PIN, INPUT_PULLUP);
-    pinMode(MOTOR_INPUT2_PIN, INPUT_PULLUP);
-    pinMode(MOTOR_INPUT3_PIN, INPUT_PULLUP);
-    pinMode(MOTOR_INPUT4_PIN, INPUT_PULLUP);
-}
-
 void setup()
 {
+
   // make all unused pins inputs with pullups enabled by default, lowest power drain
   // leave pins 0 & 1 (Arduino RX and TX) as they are
   for (byte i=2; i <= 20; i++) {    
@@ -135,13 +113,19 @@ void setup()
   delay(1); // allow a very short delay for display response
   setDisplayValues(pelletCount);
   
-  pinMode(PIPin, INPUT);
-  pinMode(TTL, OUTPUT);
+  pinMode(PHOTO_INTERRUPTER_PIN, INPUT);
+  pinMode(TTL_DEBUG_PIN, OUTPUT);
   pinMode(CS_pin, OUTPUT);
   pinMode(SS, OUTPUT);
 
   Wire.begin();
+  
+  // both the stepper control and RTC use I2C (the Wire library)
   RTC.begin(); // RTC library needs Wire
+
+  // set up stepper
+  gMotorShield.begin(); // use default I2C address of 0x40
+  gPtrToStepper->setSpeed(30); // rpm, max suggested by Adafruit for this 5V stepper
 
   if (! RTC.isrunning()) {
     Serial.println(F("RTC is NOT running!"));
@@ -172,34 +156,23 @@ void setup()
     dataFile.println(F("Time,Pellet Count,Pellet Drop Delay"));
     dataFile.close();
   }
-
-  motor.setSpeed(35);
-  setMotorToTurn();
-
+    
   delay (500);
   
   // get ready for what the system should be doing
-  PIState = digitalRead(PIPin);
+  PIState = digitalRead(PHOTO_INTERRUPTER_PIN);
   lastState = 0;
-  
 }
 
 void loop()
 {
-  PIState = digitalRead(PIPin);
+  PIState = digitalRead(PHOTO_INTERRUPTER_PIN);
   Serial.print("Photointerrupter State: ");
   Serial.println(PIState);
-  digitalWrite(TTL, LOW);
+  digitalWrite(TTL_DEBUG_PIN, LOW);
 
-  if (PIState == 1  & PIState != lastState) {
-    setMotorToTurn();
-  
-    digitalWrite(TTL, HIGH);
-    delay(50);
-    digitalWrite(MOTOR_INPUT1_PIN, HIGH);
-    digitalWrite(MOTOR_INPUT2_PIN, HIGH);
-    digitalWrite(MOTOR_INPUT3_PIN, HIGH);
-    digitalWrite(MOTOR_INPUT4_PIN, HIGH);
+  if (PIState == 1  & PIState != lastState) {    
+    digitalWrite(TTL_DEBUG_PIN, HIGH);    
     startTime = millis();
     Serial.print(F("Time Elapsed Check: "));
     Serial.println(timeElapsed);
@@ -208,15 +181,17 @@ void loop()
     pelletCount ++;
     Serial.println(F("It did work"));
     clearDisplay();
-    delay(1); // allow a very short delay for display response
+    delay(2); // allow a very short delay for display response
     setDisplayValues(pelletCount);
     lastState = PIState;
-
   }
   else if (PIState == 1) {
     Serial.println(F("Turning motor..."));
-    motor.step(-steps / 2);
-    motor.step(steps);
+    power_twi_enable();
+    gPtrToStepper->step(STEPS_TO_INCREMENT/2,FORWARD,DOUBLE);
+    gPtrToStepper->step(STEPS_TO_INCREMENT,BACKWARD,DOUBLE);
+    gPtrToStepper->release();
+    power_twi_disable();
     lastState = PIState;
   }
   
@@ -225,16 +200,10 @@ void loop()
     timeElapsed = millis() - startTime;
     Serial.println(timeElapsed);
     lastState = PIState;
-    
   }
     
   else  {
     lastState = PIState;
-    digitalWrite(MOTOR_INPUT1_PIN, LOW);
-    digitalWrite(MOTOR_INPUT2_PIN, LOW);
-    digitalWrite(MOTOR_INPUT3_PIN, LOW);
-    digitalWrite(MOTOR_INPUT4_PIN, LOW);
-    setMotorToSleep();
     enterSleep();
   }
   
