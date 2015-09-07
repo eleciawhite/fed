@@ -1,0 +1,1 @@
+Note that the FED schematics do not currently show the motor shield that is being used by the software.
